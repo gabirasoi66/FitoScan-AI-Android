@@ -238,9 +238,41 @@ class MainActivity : AppCompatActivity() {
 
         val result = TextView(this).apply {
             text = """
-                ANALIZĂ FITOSANITARĂ – MOD DEMO
+                ANALIZĂ FITOSANITARĂ - MOD DEMO
 
                 Plantă:
                 În curs de identificare
 
-                Simptom observ
+                Simptom observat:
+                Imagine selectată pentru analiză
+
+                Diagnostic preliminar:
+                Analiza AI va fi conectată în etapa următoare.
+
+                Recomandare:
+                Fotografiați clar frunza, fructul, tulpina sau zona afectată.
+
+                FitoScan-AI
+                Asistent agronomic inteligent
+            """.trimIndent()
+
+            textSize = 18f
+            setTextColor(Color.DKGRAY)
+            setPadding(0, 10, 0, 30)
+        }
+
+        val backButton = Button(this).apply {
+            text = "ÎNAPOI"
+            setOnClickListener {
+                showHomeScreen()
+            }
+        }
+
+        root.addView(title)
+        root.addView(status)
+        root.addView(result)
+        root.addView(backButton)
+
+        setContentView(root)
+    }
+}
