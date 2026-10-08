@@ -44,5 +44,5 @@ object FitoUi {
         val b=Button(a).apply {text=label;textSize=14f;isAllCaps=false;isEnabled=enabled;setTextColor(if(enabled) Color.WHITE else muted);background=rounded(if(enabled) green else Color.rgb(227,232,228),dp(a,12).toFloat());setOnClickListener{action?.invoke()}}
         parent.addView(b,LinearLayout.LayoutParams(-1,dp(a,48)).apply{bottomMargin=dp(a,9)})
     }
-    fun show(a:AppCompatActivity,content:LinearLayout){a.setContentView(ScrollView(a).apply{fillViewport=true;addView(content)})}
+    fun show(a:AppCompatActivity,content:LinearLayout){a.setContentView(ScrollView(a).apply{isFillViewport=true;addView(content)})}
 }
