@@ -2,16 +2,18 @@ package com.fitoscan.ai
 
 import android.app.Activity
 import android.content.Intent
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.Typeface
+import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
 import android.os.Environment
-import androidx.core.content.FileProvider
-import java.io.File
 import android.provider.MediaStore
 import android.view.Gravity
 import android.view.View
 import android.view.ViewGroup
+import android.view.WindowInsets
 import android.widget.Button
 import android.widget.HorizontalScrollView
 import android.widget.ImageView
@@ -20,9 +22,10 @@ import android.widget.ScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.FileProvider
+import java.io.File
 
 class MainActivity : AppCompatActivity() {
-
     private val selectedImages = mutableListOf<Uri>()
     private lateinit var photoStrip: LinearLayout
     private lateinit var analyzeButton: Button
@@ -33,6 +36,11 @@ class MainActivity : AppCompatActivity() {
         private const val GALLERY_REQUEST = 101
         private const val CAMERA_REQUEST = 102
         private const val MAX_PHOTOS = 4
+        private const val GREEN = 0xFF2E7D32.toInt()
+        private const val INK = 0xFF263238.toInt()
+        private const val MUTED = 0xFF607D8B.toInt()
+        private const val BG = 0xFFF7F9F6.toInt()
+        private const val BLUE = 0xFF16324F.toInt()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -40,103 +48,144 @@ class MainActivity : AppCompatActivity() {
         showHomeScreen()
     }
 
-    private fun showHomeScreen() {
-        val root = LinearLayout(this).apply {
+    private fun dp(value: Int) = (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun shape(color: Int, radius: Int = 14) = GradientDrawable().apply {
+        setColor(color)
+        cornerRadius = dp(radius).toFloat()
+    }
+
+    private fun text(value: String, size: Float = 14f, color: Int = INK, bold: Boolean = false) =
+        TextView(this).apply {
+            text = value
+            textSize = size
+            setTextColor(color)
+            if (bold) setTypeface(null, Typeface.BOLD)
+            includeFontPadding = true
+        }
+
+    private fun button(value: String, primary: Boolean = false, action: () -> Unit) =
+        Button(this).apply {
+            text = value
+            textSize = if (primary) 16f else 14f
+            isAllCaps = false
+            minHeight = dp(48)
+            minimumHeight = dp(48)
+            setPadding(dp(12), dp(8), dp(12), dp(8))
+            backgroundTintList = null
+            background = shape(if (primary) GREEN else Color.WHITE, 12)
+            setTextColor(if (primary) Color.WHITE else GREEN)
+            setOnClickListener { action() }
+        }
+
+    private fun spacing(bottom: Int = 10) =
+        LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(bottom) }
+
+    private fun page(): LinearLayout {
+        window.statusBarColor = BG
+        window.navigationBarColor = BG
+        @Suppress("DEPRECATION")
+        window.decorView.systemUiVisibility =
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+        return LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(32, 28, 32, 40)
-            setBackgroundColor(Color.rgb(247, 249, 246))
+            setBackgroundColor(BG)
+            setPadding(dp(16), dp(12), dp(16), dp(16))
         }
+    }
 
-        root.addView(TextView(this).apply {
-            text = "🌿 FitoScan-AI"
-            textSize = 30f
-            setTextColor(Color.rgb(46, 125, 50))
-            gravity = Gravity.CENTER
-        })
-        root.addView(TextView(this).apply {
-            text = "Agricultură inteligentă. Recolte sănătoase."
-            textSize = 15f
-            setTextColor(Color.DKGRAY)
-            gravity = Gravity.CENTER
-            setPadding(0, 4, 0, 18)
-        })
-
-        val search = Button(this).apply {
-            text = "🔎 Caută în FitoScan…   🎙️"
-            setOnClickListener {
-                SearchScreen.show(this@MainActivity, { showScanScreen() }, { showHomeScreen() })
+    private fun showPage(content: LinearLayout, footer: View? = null) {
+        val shell = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setBackgroundColor(BG)
+        }
+        val scroll = ScrollView(this).apply {
+            isFillViewport = true
+            clipToPadding = false
+            addView(content)
+        }
+        shell.addView(scroll, LinearLayout.LayoutParams(-1, 0, 1f))
+        if (footer != null) shell.addView(footer)
+        if (android.os.Build.VERSION.SDK_INT >= 30) {
+            shell.setOnApplyWindowInsetsListener { view, insets ->
+                val bars = insets.getInsets(
+                    WindowInsets.Type.statusBars() or WindowInsets.Type.navigationBars()
+                )
+                view.setPadding(0, bars.top, 0, bars.bottom)
+                insets
             }
+        } else {
+            @Suppress("DEPRECATION")
+            shell.fitsSystemWindows = true
         }
-        root.addView(search, homeMargins())
+        setContentView(shell)
+        if (android.os.Build.VERSION.SDK_INT >= 30) shell.requestApplyInsets()
+    }
 
-        root.addView(TextView(this).apply {
-            text = "Plante sănătoase\nRecolte mai bune"
-            textSize = 27f
-            setTextColor(Color.rgb(38,50,56))
-            setPadding(10,18,10,10)
-        })
-        root.addView(TextView(this).apply {
-            text = "Identifică plantele • Diagnostichează problemele • Recomandări agronomice • Meteo și ghiduri"
-            textSize = 15f
-            setTextColor(Color.DKGRAY)
-            setPadding(10,0,10,14)
-        })
+    private fun showHomeScreen() {
+        val root = page()
+        root.addView(text("🌿 FitoScan–AI", 23f, GREEN, true), spacing(3))
+        root.addView(text("Agricultură inteligentă. Recolte sănătoase.", 12f, MUTED), spacing(14))
 
-        root.addView(Button(this).apply {
-            text = "📷  SCANEAZĂ PLANTA  ›"
-            textSize = 19f
-            setOnClickListener { showScanScreen() }
-        }, homeMargins())
+        root.addView(button("⌕  Caută în FitoScan") {
+            SearchScreen.show(this, { showScanScreen() }, { showHomeScreen() })
+        }, spacing(14))
 
-        root.addView(TextView(this).apply {
-            text = "Planul zilei – AI Agronom"
-            textSize = 20f
-            setTextColor(Color.rgb(22,50,79))
-            setPadding(8,18,8,8)
-        })
-        root.addView(TextView(this).apply {
-            text = "Planul zilei va folosi Jurnalul, Monitorizarea, Meteo și Avertizările. Nu sunt generate sarcini fictive."
-            textSize = 15f
-            setTextColor(Color.DKGRAY)
-            setPadding(8,0,8,12)
-        })
-
-        val quick = listOf(
-            "🌦 Meteo & Avertizări" to false,
-            "🧪 Tratamente" to true,
-            "📓 Jurnal" to true,
-            "📈 Monitorizare" to false,
-            "✨ Întreabă AI Agronom" to true
-        )
-        quick.forEach { (label, enabled) ->
-            root.addView(Button(this).apply {
-                text = label
-                isEnabled = enabled
-                setOnClickListener {
-                    when(label) {
-                        "📓 Jurnal" -> JournalScreen.show(this@MainActivity) { showHomeScreen() }
-                        "🧪 Tratamente" -> TreatmentScreen.show(this@MainActivity, "", "") { showHomeScreen() }
-                        "✨ Întreabă AI Agronom" -> AiAgronomScreen.show(this@MainActivity,{ showScanScreen() },{ showHomeScreen() })
-                    }
-                }
-            }, homeMargins())
+        val hero = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(16), dp(16), dp(16), dp(16))
+            background = shape(0xFFE8F5E9.toInt(), 16)
         }
+        hero.addView(text("Plante sănătoase.\nRecolte mai bune.", 22f, BLUE, true), spacing(8))
+        hero.addView(text("Identificare plante, analiză a simptomelor și asistență agronomică.", 13f, INK), spacing(12))
+        hero.addView(button("📷  SCANEAZĂ PLANTA", true) { showScanScreen() })
+        root.addView(hero, spacing(18))
 
+        root.addView(text("Planul zilei", 17f, BLUE, true), spacing(6))
+        root.addView(text("Recomandările vor apărea aici pe baza datelor reale din jurnal și meteo. Nu sunt afișate sarcini inventate.", 13f, MUTED), spacing(16))
+
+        root.addView(text("Acces rapid", 17f, BLUE, true), spacing(8))
+        root.addView(button("🌦  Meteo și avertizări") {
+            WeatherAlertsScreen.show(this) { showHomeScreen() }
+        }, spacing(8))
+        root.addView(button("🧪  Tratamente") {
+            TreatmentScreen.show(this, "", "") { showHomeScreen() }
+        }, spacing(8))
+        root.addView(button("📓  Jurnal agricol") {
+            JournalScreen.show(this) { showHomeScreen() }
+        }, spacing(8))
+        root.addView(button("📈  Monitorizare (alege un caz din Jurnal)") {
+            JournalScreen.show(this) { showHomeScreen() }
+        }, spacing(8))
+        root.addView(button("✨  Întreabă AI Agronom") {
+            AiAgronomScreen.show(this, { showScanScreen() }, { showHomeScreen() })
+        }, spacing(8))
+
+        showPage(root, navigation())
+    }
+
+    private fun navigation(): View {
         val nav = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-            setPadding(0,18,0,4)
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(4), dp(5), dp(4), dp(5))
+            setBackgroundColor(Color.WHITE)
         }
-        val navItems = listOf("Acasă","Scanare","AI Agronom","Jurnal","Mai multe")
-        navItems.forEach { item ->
-            nav.addView(Button(this).apply {
+        val items = listOf("Acasă", "Scanare", "AI Agronom", "Jurnal", "Mai multe")
+        items.forEach { item ->
+            val active = item == "Acasă"
+            nav.addView(TextView(this).apply {
                 text = item
-                textSize = 11f
-                isEnabled = item != "Acasă"
+                textSize = 10f
+                gravity = Gravity.CENTER
+                setTextColor(if (active) GREEN else INK)
+                setTypeface(null, if (active) Typeface.BOLD else Typeface.NORMAL)
+                setPadding(dp(2), dp(10), dp(2), dp(10))
                 setOnClickListener {
-                    when(item) {
+                    when (item) {
+                        "Acasă" -> showHomeScreen()
                         "Scanare" -> showScanScreen()
-                        "AI Agronom" -> AiAgronomScreen.show(this@MainActivity,{ showScanScreen() },{ showHomeScreen() })
+                        "AI Agronom" -> AiAgronomScreen.show(this@MainActivity, { showScanScreen() }, { showHomeScreen() })
                         "Jurnal" -> JournalScreen.show(this@MainActivity) { showHomeScreen() }
                         "Mai multe" -> MoreScreen.show(
                             this@MainActivity,
@@ -145,125 +194,50 @@ class MainActivity : AppCompatActivity() {
                         )
                     }
                 }
-            }, LinearLayout.LayoutParams(0,ViewGroup.LayoutParams.WRAP_CONTENT,1f))
+            }, LinearLayout.LayoutParams(0, dp(48), 1f))
         }
-        root.addView(nav)
-        setContentView(ScrollView(this).apply { addView(root) })
+        return nav
     }
 
-    private fun homeMargins() = LinearLayout.LayoutParams(
-        ViewGroup.LayoutParams.MATCH_PARENT,
-        ViewGroup.LayoutParams.WRAP_CONTENT
-    ).apply { setMargins(0,8,0,8) }
-
     private fun showScanScreen() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(32, 32, 32, 48)
-            setBackgroundColor(Color.rgb(247, 250, 247))
-        }
+        val root = page()
+        root.addView(text("Scanare plantă", 22f, GREEN, true), spacing(8))
+        root.addView(text("Adaugă până la 4 fotografii: planta întreagă, zona afectată, detaliu și context.", 14f), spacing(14))
 
-        val title = TextView(this).apply {
-            text = "Scanare plantă"
-            textSize = 27f
-            setTextColor(Color.rgb(46, 125, 50))
-            gravity = Gravity.CENTER
-        }
-
-        val guide = TextView(this).apply {
-            text = "Adăugați până la 4 fotografii: planta întreagă, zona afectată, detaliu și context."
-            textSize = 16f
-            setTextColor(Color.DKGRAY)
-            setPadding(0, 18, 0, 20)
-        }
-
-        counterText = TextView(this).apply {
-            textSize = 16f
-            setTextColor(Color.rgb(22, 50, 79))
-            setPadding(0, 0, 0, 12)
-        }
-
+        counterText = text("", 14f, BLUE, true)
+        root.addView(counterText, spacing(8))
         photoStrip = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
         }
-
-        val stripScroll = HorizontalScrollView(this).apply {
+        root.addView(HorizontalScrollView(this).apply {
             addView(photoStrip)
-        }
+        }, LinearLayout.LayoutParams(-1, dp(190)).apply { bottomMargin = dp(12) })
 
-        val cameraButton = Button(this).apply {
-            text = "📷 FOTOGRAFIAZĂ"
-            setOnClickListener { openCameraFullResolution() }
-        }
+        root.addView(button("📷  Fotografiază") { openCameraFullResolution() }, spacing(8))
+        root.addView(button("🖼  Alege din galerie") { openGallery() }, spacing(8))
 
-        val galleryButton = Button(this).apply {
-            text = "🖼 ALEGE DIN GALERIE"
-            setOnClickListener { openGallery() }
-        }
+        analyzeButton = button("✨  ANALIZEAZĂ PLANTA", true) { prepareAnalysis() }
+        root.addView(analyzeButton, spacing(8))
+        root.addView(button("Șterge toate fotografiile") {
+            selectedImages.clear()
+            refreshPreview()
+        }, spacing(8))
+        root.addView(button("←  Înapoi la Acasă") { showHomeScreen() }, spacing(8))
 
-        analyzeButton = Button(this).apply {
-            text = "✨ ANALIZEAZĂ"
-            textSize = 17f
-            isEnabled = selectedImages.isNotEmpty()
-            setOnClickListener { prepareAnalysis() }
-        }
-
-        val clearButton = Button(this).apply {
-            text = "ȘTERGE TOATE"
-            setOnClickListener {
-                selectedImages.clear()
-                refreshPreview()
-            }
-        }
-
-        val backButton = Button(this).apply {
-            text = "ÎNAPOI"
-            setOnClickListener {
-                selectedImages.clear()
-                showHomeScreen()
-            }
-        }
-
-        val params = LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT,
-            ViewGroup.LayoutParams.WRAP_CONTENT
-        ).apply { setMargins(0, 10, 0, 10) }
-
-        root.addView(title)
-        root.addView(guide)
-        root.addView(counterText)
-        root.addView(stripScroll, LinearLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, 430
-        ))
-        root.addView(cameraButton, params)
-        root.addView(galleryButton, params)
-        root.addView(analyzeButton, params)
-        root.addView(clearButton, params)
-        root.addView(backButton, params)
-
-        setContentView(ScrollView(this).apply { addView(root) })
+        showPage(root)
         refreshPreview()
     }
 
-
-
     private fun openCameraFullResolution() {
         if (selectedImages.size >= MAX_PHOTOS) {
-            Toast.makeText(this, "Ați selectat deja maximum 4 fotografii.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Ai selectat deja 4 fotografii.", Toast.LENGTH_SHORT).show()
             return
         }
-
         try {
-            val photoDir = getExternalFilesDir(Environment.DIRECTORY_PICTURES)
-            val photoFile = File.createTempFile("fitoscan_", ".jpg", photoDir)
-            val uri = FileProvider.getUriForFile(
-                this,
-                "${applicationContext.packageName}.fileprovider",
-                photoFile
-            )
+            val file = File.createTempFile("fitoscan_", ".jpg", getExternalFilesDir(Environment.DIRECTORY_PICTURES))
+            val uri = FileProvider.getUriForFile(this, "${applicationContext.packageName}.fileprovider", file)
             pendingCameraUri = uri
-
             val intent = Intent(MediaStore.ACTION_IMAGE_CAPTURE).apply {
                 putExtra(MediaStore.EXTRA_OUTPUT, uri)
                 addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION or Intent.FLAG_GRANT_READ_URI_PERMISSION)
@@ -277,43 +251,33 @@ class MainActivity : AppCompatActivity() {
 
     private fun openGallery() {
         if (selectedImages.size >= MAX_PHOTOS) {
-            Toast.makeText(this, "Ați selectat deja maximum 4 fotografii.", Toast.LENGTH_SHORT).show()
+            Toast.makeText(this, "Ai selectat deja 4 fotografii.", Toast.LENGTH_SHORT).show()
             return
         }
-
-        val intent = Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply {
-            type = "image/*"
-        }
-        startActivityForResult(intent, GALLERY_REQUEST)
+        startActivityForResult(
+            Intent(Intent.ACTION_PICK, MediaStore.Images.Media.EXTERNAL_CONTENT_URI).apply { type = "image/*" },
+            GALLERY_REQUEST
+        )
     }
 
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-
         if (resultCode != Activity.RESULT_OK) {
             if (requestCode == CAMERA_REQUEST) pendingCameraUri = null
             return
         }
-
         when (requestCode) {
             CAMERA_REQUEST -> {
-                pendingCameraUri?.let { uri ->
-                    if (selectedImages.size < MAX_PHOTOS) {
-                        selectedImages.add(uri)
-                        refreshPreview()
-                    }
-                }
+                pendingCameraUri?.let { if (selectedImages.size < MAX_PHOTOS) selectedImages.add(it) }
                 pendingCameraUri = null
+                refreshPreview()
             }
-
             GALLERY_REQUEST -> {
                 val uri = data?.data ?: return
                 if (selectedImages.contains(uri)) {
                     Toast.makeText(this, "Această fotografie este deja adăugată.", Toast.LENGTH_SHORT).show()
-                    return
-                }
-                if (selectedImages.size < MAX_PHOTOS) {
+                } else if (selectedImages.size < MAX_PHOTOS) {
                     selectedImages.add(uri)
                     refreshPreview()
                 }
@@ -322,149 +286,76 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refreshPreview() {
-        if (!::photoStrip.isInitialized) return
-
+        if (!::photoStrip.isInitialized || !::counterText.isInitialized || !::analyzeButton.isInitialized) return
         photoStrip.removeAllViews()
         counterText.text = "Fotografii selectate: ${selectedImages.size}/$MAX_PHOTOS"
-
         selectedImages.forEachIndexed { index, uri ->
             val card = LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 gravity = Gravity.CENTER
-                setPadding(6, 6, 6, 6)
+                setPadding(dp(4), dp(4), dp(4), dp(4))
             }
-
-            val image = ImageView(this).apply {
+            card.addView(ImageView(this).apply {
                 setImageURI(uri)
                 scaleType = ImageView.ScaleType.CENTER_CROP
-                adjustViewBounds = false
-            }
-
-            val remove = Button(this).apply {
-                text = "×"
-                textSize = 20f
-                setOnClickListener {
-                    if (index < selectedImages.size) {
-                        selectedImages.removeAt(index)
-                        refreshPreview()
-                    }
+            }, LinearLayout.LayoutParams(dp(145), dp(125)))
+            card.addView(button("✕  Elimină") {
+                if (index < selectedImages.size) {
+                    selectedImages.removeAt(index)
+                    refreshPreview()
                 }
-            }
-
-            card.addView(image, LinearLayout.LayoutParams(300, 300))
-            card.addView(remove, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT,
-                ViewGroup.LayoutParams.WRAP_CONTENT
-            ))
+            }, LinearLayout.LayoutParams(dp(145), dp(48)))
             photoStrip.addView(card)
         }
-
         analyzeButton.isEnabled = selectedImages.isNotEmpty()
-    }
-
-    private fun showAnalysisPlaceholder() {
-        val root = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(48, 50, 48, 50)
-            setBackgroundColor(Color.rgb(247, 250, 247))
-        }
-
-        val title = TextView(this).apply {
-            text = "Analiză FitoScan-AI"
-            textSize = 28f
-            setTextColor(Color.rgb(46, 125, 50))
-            gravity = Gravity.CENTER
-        }
-
-        val status = TextView(this).apply {
-            text = """
-                Fotografii pregătite: ${selectedImages.size}
-
-                1. Identificare plantă
-                2. Analiză simptome
-                3. Cauze posibile
-                4. Evaluare rezultat
-
-                Fotografiile sunt pregătite la rezoluție utilă pentru transmiterea către backend-ul AI.
-            """.trimIndent()
-            textSize = 18f
-            setTextColor(Color.DKGRAY)
-            setPadding(0, 30, 0, 30)
-        }
-
-        val backButton = Button(this).apply {
-            text = "ÎNAPOI LA PREVIEW"
-            setOnClickListener { showScanScreen() }
-        }
-
-        root.addView(title)
-        root.addView(status)
-        root.addView(backButton)
-        setContentView(ScrollView(this).apply { addView(root) })
+        analyzeButton.alpha = if (selectedImages.isNotEmpty()) 1f else 0.55f
     }
 
     private fun prepareAnalysis() {
         if (selectedImages.isEmpty()) return
         analyzeButton.isEnabled = false
         analyzeButton.text = "Se pregătesc fotografiile…"
-
+        val snapshot = selectedImages.toList()
         Thread {
-            val preparedResult = runCatching {
-                selectedImages.map { ImagePreprocessor.prepare(contentResolver, it) }
+            val result = runCatching {
+                snapshot.map { ImagePreprocessor.prepare(contentResolver, it) }
             }
             runOnUiThread {
-                preparedResult.onSuccess { prepared ->
-                    sendAnalysis(prepared)
-                }.onFailure { error ->
+                result.onSuccess { sendAnalysis(it) }.onFailure { error ->
                     analyzeButton.isEnabled = true
-                    analyzeButton.text = "✨ ANALIZEAZĂ"
-                    Toast.makeText(
-                        this,
-                        "Pregătirea fotografiilor a eșuat: ${error.message ?: "eroare necunoscută"}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    analyzeButton.text = "✨  ANALIZEAZĂ PLANTA"
+                    Toast.makeText(this, "Pregătirea fotografiilor a eșuat: ${error.message ?: "eroare necunoscută"}", Toast.LENGTH_LONG).show()
                 }
             }
         }.start()
     }
 
     private fun sendAnalysis(prepared: List<PreparedImage>) {
-        val requestJson = runCatching {
+        val json = runCatching {
             AnalysisContract.buildRequest(prepared, AnalysisContext())
         }.getOrElse {
             analyzeButton.isEnabled = true
-            analyzeButton.text = "✨ ANALIZEAZĂ"
+            analyzeButton.text = "✨  ANALIZEAZĂ PLANTA"
             Toast.makeText(this, it.message ?: "Cerere invalidă.", Toast.LENGTH_LONG).show()
             return
         }
-
         analyzeButton.text = "Analiză AI în curs…"
-        ApiTransport().postJson(requestJson) { networkResult ->
+        ApiTransport().postJson(json) { networkResult ->
             runOnUiThread {
                 analyzeButton.isEnabled = true
-                analyzeButton.text = "✨ ANALIZEAZĂ"
-
+                analyzeButton.text = "✨  ANALIZEAZĂ PLANTA"
                 networkResult.onSuccess { raw ->
                     runCatching { AnalysisResponseParser.parse(raw) }
                         .onSuccess { result ->
                             ResultScreen.show(this@MainActivity, result) { showScanScreen() }
                         }
                         .onFailure { error ->
-                            Toast.makeText(
-                                this,
-                                "Răspuns AI invalid: ${error.message ?: "eroare necunoscută"}",
-                                Toast.LENGTH_LONG
-                            ).show()
+                            Toast.makeText(this, "Răspuns AI invalid: ${error.message ?: "eroare necunoscută"}", Toast.LENGTH_LONG).show()
                         }
                 }.onFailure { error ->
-                    Toast.makeText(
-                        this,
-                        "Analiza nu a reușit. Fotografiile au rămas în Preview. ${error.message ?: ""}",
-                        Toast.LENGTH_LONG
-                    ).show()
+                    Toast.makeText(this, "Analiza nu a reușit. Fotografiile sunt păstrate. ${error.message ?: ""}", Toast.LENGTH_LONG).show()
                 }
             }
         }
     }
-
 }
