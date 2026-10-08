@@ -1,15 +1,17 @@
 package com.fitoscan.ai
-import android.graphics.Color
-import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-object SafetyLocationScreen{
+import android.widget.*
+object SafetyLocationScreen {
  fun show(a:AppCompatActivity,back:()->Unit){
-  val r=LinearLayout(a).apply{orientation=LinearLayout.VERTICAL;setPadding(30,30,30,48);setBackgroundColor(Color.rgb(247,249,246))}
-  r.addView(TextView(a).apply{text="🆘 Siguranță • Localizare • SOS";textSize=25f;setTextColor(Color.rgb(198,40,40))})
-  r.addView(TextView(a).apply{text="Coordonatele și precizia GPS apar numai dintr-o poziție reală și cu permisiune. FitoScan nu inventează coordonate.\n\nHărți: parcele și puncte sigure salvate.\n\nSOS: apelarea serviciilor de urgență și transmiterea locației necesită confirmare explicită.";textSize=16f;setPadding(0,18,0,18)})
-  listOf("📍 LOCAȚIA MEA","🆘 SUNĂ 112","📤 TRIMITE LOCAȚIA","🧭 NAVIGHEAZĂ LA PUNCT SIGUR").forEach{r.addView(Button(a).apply{text=it;isEnabled=false})}
-  r.addView(TextView(a).apply{text="FitoScan–AI nu înlocuiește serviciile de urgență.";textSize=13f})
-  r.addView(Button(a).apply{text="ÎNAPOI";setOnClickListener{back()}})
-  a.setContentView(ScrollView(a).apply{addView(r)})
+  val r=FitoUi.page(a,"Siguranță • Localizare • SOS")
+  FitoUi.card(a,r,"📍 Locație reală","Coordonatele se afișează numai cu permisiune și după obținerea unei poziții GPS reale.")
+  FitoUi.card(a,r,"🗺 Hărți și puncte sigure","Parcelele și punctele salvate vor putea fi folosite pentru navigare.")
+  FitoUi.card(a,r,"🆘 Situații de urgență","Apelarea și distribuirea locației vor necesita confirmare explicită. Aplicația nu înlocuiește serviciile de urgență.")
+  FitoUi.button(a,r,"Locația mea",false)
+  FitoUi.button(a,r,"Sună 112",false)
+  FitoUi.button(a,r,"Trimite locația",false)
+  FitoUi.button(a,r,"Navighează la punct sigur",false)
+  FitoUi.button(a,r,"← Înapoi"){back()}
+  FitoUi.show(a,r)
  }
 }

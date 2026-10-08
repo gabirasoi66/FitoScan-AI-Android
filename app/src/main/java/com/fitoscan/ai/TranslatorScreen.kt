@@ -1,17 +1,17 @@
 package com.fitoscan.ai
-import android.graphics.Color
-import android.widget.*
 import androidx.appcompat.app.AppCompatActivity
-object TranslatorScreen{
+import android.widget.*
+object TranslatorScreen {
  fun show(a:AppCompatActivity,back:()->Unit){
-  val langs=listOf("Română","English","Français","Deutsch","Italiano","Español","Русский")
-  val r=LinearLayout(a).apply{orientation=LinearLayout.VERTICAL;setPadding(30,30,30,48);setBackgroundColor(Color.rgb(247,249,246))}
-  r.addView(TextView(a).apply{text="🌐 Traducător";textSize=28f;setTextColor(Color.rgb(46,125,50))})
-  r.addView(TextView(a).apply{text="Conversație bidirecțională pentru lucrători agricoli. Limba interfeței și limbile conversației sunt independente.";textSize=16f})
-  r.addView(Spinner(a).apply{adapter=ArrayAdapter(a,android.R.layout.simple_spinner_dropdown_item,langs)})
-  r.addView(Spinner(a).apply{adapter=ArrayAdapter(a,android.R.layout.simple_spinner_dropdown_item,langs);setSelection(1)})
-  r.addView(Button(a).apply{text="🎙 ÎNCEPE CONVERSAȚIA";isEnabled=false})
-  r.addView(Button(a).apply{text="ÎNAPOI";setOnClickListener{back()}})
-  a.setContentView(ScrollView(a).apply{addView(r)})
+  val r=FitoUi.page(a,"Traducător")
+  FitoUi.card(a,r,"🌐 Traducere bidirecțională","Selectează limbile celor doi interlocutori. Traducerea vocală va necesita conectarea serviciului de recunoaștere și traducere.")
+  val languages=listOf("Română","English","Français","Deutsch","Italiano","Español","Русский")
+  val from=Spinner(a).apply{adapter=ArrayAdapter(a,android.R.layout.simple_spinner_dropdown_item,languages)}
+  val to=Spinner(a).apply{adapter=ArrayAdapter(a,android.R.layout.simple_spinner_dropdown_item,languages);setSelection(1)}
+  r.addView(from);r.addView(to)
+  FitoUi.button(a,r,"⇄ Inversează limbile"){val x=from.selectedItemPosition;from.setSelection(to.selectedItemPosition);to.setSelection(x)}
+  FitoUi.button(a,r,"Începe conversația",false)
+  FitoUi.button(a,r,"← Înapoi"){back()}
+  FitoUi.show(a,r)
  }
 }
