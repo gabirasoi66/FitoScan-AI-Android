@@ -9,7 +9,7 @@ permissions:
   contents: read
 jobs:
   android-build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
       - name: Checkout original pinned commit
@@ -290,7 +290,24 @@ jobs:
           cache-disabled: true
       - name: Install Android SDK components
         shell: bash
-        run: sdkmanager 'platforms;android-35' 'build-tools;36.0.0'
+        run: |
+          set -euo pipefail
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          echo "ANDROID_HOME=$sdk" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$sdk" >> "$GITHUB_ENV"
+          if [[ -f "$sdk/platforms/android-35/android.jar" && -x "$sdk/build-tools/36.0.0/apksigner" ]]; then
+            echo "Required Android SDK components already installed."
+            exit 0
+          fi
+          manager="$(command -v sdkmanager || true)"
+          if [[ -z "$manager" ]]; then
+            manager="$(find "$sdk/cmdline-tools" -type f -path '*/bin/sdkmanager' 2>/dev/null | sort -V | tail -n 1 || true)"
+          fi
+          if [[ -z "$manager" || ! -x "$manager" ]]; then
+            echo "::error::Android SDK command-line tools unavailable at $sdk"
+            exit 1
+          fi
+          "$manager" --sdk_root="$sdk" 'platforms;android-35' 'build-tools;36.0.0'
       - name: Build debug APK and capture log
         shell: bash
         run: |
