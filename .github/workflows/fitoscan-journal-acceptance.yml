@@ -1,0 +1,161 @@
+name: FitoScan AI - offline journal acceptance
+on:
+  push:
+    branches: ['fitoscan-apk-test-2026-11-26']
+    paths: ['.github/workflows/fitoscan-journal-acceptance.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download exact validated APK
+        uses: actions/download-artifact@v4
+        with:
+          name: FitoScan-AI-Test-APK
+          run-id: 45892859317
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify APK hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '1b53193cecc848a0bb0b607998a896de44de4ef5cd174a09b6ba2032b03b2d74  candidate/FitoScan-AI-Test.apk' | sha256sum -c -
+      - name: Start API 35 emulator and test offline journal
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk"
+          tools="$(find "$sdk/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$tools"
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          image='system-images;android-35;google_apis;x86_64'
+          "$tools" --sdk_root="$sdk" 'platform-tools' 'emulator' "$image"
+          export PATH="$sdk/platform-tools:$sdk/emulator:$PATH"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/fitoscan-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avdmanager="$(dirname "$tools")/avdmanager"
+          printf 'no\n' > "$RUNNER_TEMP/fitoscan-avd-input.txt"
+          "$avdmanager" create avd --force --name fitoscan_ci --package "$image" --path "$ANDROID_AVD_HOME/fitoscan_ci.avd" < "$RUNNER_TEMP/fitoscan-avd-input.txt" > evidence/avd-create.log 2>&1
+          "$avdmanager" list avd > evidence/avd-list.txt
+          emulator -list-avds | tee evidence/emulator-list.txt
+          test -f "$ANDROID_AVD_HOME/fitoscan_ci.ini"
+          grep -qx fitoscan_ci evidence/emulator-list.txt
+          emulator -avd fitoscan_ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > evidence/emulator.log 2>&1 &
+          emu_pid=$!
+          trap 'adb emu kill || true; kill "$emu_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 120); do
+            if ! kill -0 "$emu_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before ADB connected"
+              tail -n 60 evidence/emulator.log
+              exit 1
+            fi
+            if adb get-state 2>/dev/null | grep -qx device; then ready=1; break; fi
+            sleep 3
+          done
+          test "$ready" = 1
+          timeout 240 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == 1 ]]; do sleep 3; done'
+          adb shell input keyevent 82
+          adb shell cmd connectivity airplane-mode enable
+          adb shell svc wifi disable
+          adb shell svc data disable
+          adb shell settings get global airplane_mode_on | tr -d '\r' | grep -qx 1
+          adb install candidate/FitoScan-AI-Test.apk | tee evidence/install.txt
+          grep -qx Success evidence/install.txt
+          pkg=com.fitoscan.ai.candidate
+          activity="$pkg/com.fitoscan.ai.MainActivity"
+          adb logcat -c
+          for i in 1 2; do
+            adb shell am force-stop "$pkg"
+            adb shell am start -W -n "$activity" | tee "evidence/start-$i.txt"
+            grep -q 'Status: ok' "evidence/start-$i.txt"
+            sleep 8
+            adb shell pidof "$pkg" > "evidence/pid-$i.txt"
+            adb shell dumpsys activity activities > "evidence/activity-$i.txt"
+            grep -E 'mResumedActivity|topResumedActivity' "evidence/activity-$i.txt" | grep -F "$pkg"
+            adb exec-out screencap -p > "evidence/start-$i.png"
+            adb shell uiautomator dump /sdcard/fitoscan-ui.xml
+            adb pull /sdcard/fitoscan-ui.xml "evidence/ui-$i.xml"
+          done
+          python3 - <<'PYJOURNAL'
+          import json, re, subprocess, time, xml.etree.ElementTree as ET
+          from pathlib import Path
+          E=Path('evidence'); E.mkdir(exist_ok=True)
+          PKG='com.fitoscan.ai.candidate'; ACT=PKG+'/com.fitoscan.ai.MainActivity'
+
+          def adb(*args):
+              return subprocess.check_output(['adb',*args],stderr=subprocess.STDOUT,timeout=30)
+
+          def shell(*args): return adb('shell',*args)
+
+          def snapshot(name):
+              shell('uiautomator','dump','/sdcard/fitoscan-journal.xml')
+              data=adb('exec-out','cat','/sdcard/fitoscan-journal.xml')
+              (E/(name+'.xml')).write_bytes(data)
+              (E/(name+'.png')).write_bytes(adb('exec-out','screencap','-p'))
+              return list(ET.fromstring(data).iter('node'))
+
+          def node_match(n,label): return label.casefold() in n.get('text','').casefold() or label.casefold() in n.get('content-desc','').casefold()
+          def require(nodes,label):
+              assert any(node_match(n,label) for n in nodes), 'Missing UI label: '+label
+
+          def tap(n):
+              x1,y1,x2,y2=map(int,re.findall(r'\d+',n.get('bounds','')))
+              assert x2>x1 and y2>y1
+              shell('input','tap',str((x1+x2)//2),str((y1+y2)//2)); time.sleep(.6)
+
+          def click(nodes,label):
+              candidates=[n for n in nodes if node_match(n,label) and n.get('clickable')=='true']
+              assert len(candidates)==1, f'Expected one clickable {label}, found {len(candidates)}'
+              tap(candidates[0])
+
+          def edit(nodes,hint,value):
+              candidates=[n for n in nodes if n.get('class')=='android.widget.EditText' and node_match(n,hint)]
+              assert len(candidates)==1, 'Missing or ambiguous edit: '+hint
+              tap(candidates[0]); shell('input','text',value.replace(' ','%s')); time.sleep(.3)
+
+          def journal_data():
+              raw=adb('exec-out','run-as',PKG,'cat','shared_prefs/fitoscan_journal.xml')
+              root=ET.fromstring(raw); return json.loads(root.find("string[@name='cases']").text)
+
+          # Larger logical viewport reduces keyboard/scroll interference, still an isolated emulator.
+          shell('wm','size','720x1280'); shell('wm','density','200')
+          shell('am','force-stop',PKG); shell('am','start','-W','-n',ACT); time.sleep(2)
+          click(snapshot('journal-home'),'Jurnal')
+          nodes=snapshot('journal-empty'); require(nodes,'Nu există încă niciun caz salvat')
+          click(nodes,'CAZ NOU'); nodes=snapshot('journal-form'); require(nodes,'Caz manual')
+          click(nodes,'Salvați'); nodes=snapshot('journal-invalid'); require(nodes,'Caz manual')
+          fields=[('Fermă / beneficiar','Ferma Test CI'),('Parcelă / solar / livadă','Solar CI'),('Cultură','Tomate CI'),('Observație (nu diagnostic AI)','Observatie sintetica CI')]
+          for i,(hint,value) in enumerate(fields):
+              edit(snapshot('journal-field-'+str(i)),hint,value)
+          # Hide keyboard only when visible, not the dialog itself.
+          ime=shell('dumpsys','input_method').decode(errors='replace')
+          if re.search(r'\bmInputShown=true\b|\bmIsInputViewShown=true\b',ime): shell('input','keyevent','4'); time.sleep(.5)
+          nodes=snapshot('journal-completed-form'); require(nodes,'Caz manual'); click(nodes,'Salvați')
+          nodes=snapshot('journal-saved'); require(nodes,'Tomate CI'); require(nodes,'Observație a utilizatorului')
+          cases=journal_data(); assert len(cases)==1,cases
+          c=cases[0]; assert (c['farm'],c['parcel'],c['crop'],c['assessment'],c['origin'])==('Ferma Test CI','Solar CI','Tomate CI','Observatie sintetica CI','MANUAL'),c
+          shell('am','force-stop',PKG); shell('am','start','-W','-n',ACT); time.sleep(2)
+          click(snapshot('journal-relaunch-home'),'Jurnal'); nodes=snapshot('journal-restored'); require(nodes,'Tomate CI'); require(nodes,'Observatie sintetica CI')
+          assert journal_data()==cases, 'Persisted case changed after force-stop/relaunch'
+          assert shell('settings','get','global','airplane_mode_on').strip()==b'1'
+          (E/'journal-result.txt').write_text('PASS: empty form rejected, one synthetic MANUAL case saved offline, UI and stored fields match, same case visible and unchanged after process restart. No AI request.\n')
+          print((E/'journal-result.txt').read_text())
+          PYJOURNAL
+          adb logcat -d -b crash > evidence/crash.log
+          if grep -F 'Process: com.fitoscan.ai.candidate' evidence/crash.log; then exit 1; fi
+          printf '%s\n' 'PASS: exact APK installed and launched twice in API 35 emulator, airplane mode; no candidate process crash observed.' > evidence/result.txt
+      - name: Archive smoke test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FitoScan-AI-journal-acceptance-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
