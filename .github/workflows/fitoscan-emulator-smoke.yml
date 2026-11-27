@@ -1,0 +1,77 @@
+name: FitoScan AI - emulator smoke test APK I-III
+on:
+  push:
+    branches: ['fitoscan-apk-test-2026-11-26']
+    paths: ['.github/workflows/fitoscan-emulator-smoke.yml']
+permissions:
+  contents: read
+  actions: read
+jobs:
+  smoke:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Download exact validated APK
+        uses: actions/download-artifact@v4
+        with:
+          name: FitoScan-AI-Test-APK
+          run-id: 45892859317
+          github-token: ${{ github.token }}
+          path: candidate
+      - name: Verify APK hash
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo '1b53193cecc848a0bb0b607998a896de44de4ef5cd174a09b6ba2032b03b2d74  candidate/FitoScan-AI-Test.apk' | sha256sum -c -
+      - name: Start API 35 emulator and test offline launch
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          sdk="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-/usr/local/lib/android/sdk}}"
+          export ANDROID_HOME="$sdk" ANDROID_SDK_ROOT="$sdk"
+          tools="$(find "$sdk/cmdline-tools" -type f -path '*/bin/sdkmanager' | sort -V | tail -n 1)"
+          test -x "$tools"
+          test -e /dev/kvm
+          sudo chmod a+rw /dev/kvm
+          image='system-images;android-35;google_apis;x86_64'
+          "$tools" --sdk_root="$sdk" 'platform-tools' 'emulator' "$image"
+          echo no | "$(dirname "$tools")/avdmanager" create avd --force --name fitoscan_ci --package "$image"
+          export PATH="$sdk/platform-tools:$sdk/emulator:$PATH"
+          emulator -avd fitoscan_ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > evidence/emulator.log 2>&1 &
+          trap 'adb emu kill || true' EXIT
+          timeout 240 adb wait-for-device
+          timeout 240 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == 1 ]]; do sleep 3; done'
+          adb shell input keyevent 82
+          adb shell cmd connectivity airplane-mode enable
+          adb shell svc wifi disable
+          adb shell svc data disable
+          adb shell settings get global airplane_mode_on | tr -d '\r' | grep -qx 1
+          adb install candidate/FitoScan-AI-Test.apk | tee evidence/install.txt
+          grep -qx Success evidence/install.txt
+          pkg=com.fitoscan.ai.candidate
+          activity="$pkg/com.fitoscan.ai.MainActivity"
+          adb logcat -c
+          for i in 1 2; do
+            adb shell am force-stop "$pkg"
+            adb shell am start -W -n "$activity" | tee "evidence/start-$i.txt"
+            grep -q 'Status: ok' "evidence/start-$i.txt"
+            sleep 8
+            adb shell pidof "$pkg" > "evidence/pid-$i.txt"
+            adb shell dumpsys activity activities > "evidence/activity-$i.txt"
+            grep -E 'mResumedActivity|topResumedActivity' "evidence/activity-$i.txt" | grep -F "$pkg"
+            adb exec-out screencap -p > "evidence/start-$i.png"
+            adb shell uiautomator dump /sdcard/fitoscan-ui.xml
+            adb pull /sdcard/fitoscan-ui.xml "evidence/ui-$i.xml"
+          done
+          adb logcat -d -b crash > evidence/crash.log
+          if grep -F 'Process: com.fitoscan.ai.candidate' evidence/crash.log; then exit 1; fi
+          printf '%s\n' 'PASS: exact APK installed and launched twice in API 35 emulator, airplane mode; no candidate process crash observed.' > evidence/result.txt
+      - name: Archive smoke test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: FitoScan-AI-emulator-smoke-evidence
+          path: evidence/
+          if-no-files-found: warn
+          retention-days: 7
