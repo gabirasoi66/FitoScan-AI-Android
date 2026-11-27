@@ -36,11 +36,30 @@ jobs:
           sudo chmod a+rw /dev/kvm
           image='system-images;android-35;google_apis;x86_64'
           "$tools" --sdk_root="$sdk" 'platform-tools' 'emulator' "$image"
-          echo no | "$(dirname "$tools")/avdmanager" create avd --force --name fitoscan_ci --package "$image"
           export PATH="$sdk/platform-tools:$sdk/emulator:$PATH"
+          export ANDROID_AVD_HOME="$RUNNER_TEMP/fitoscan-avd"
+          mkdir -p "$ANDROID_AVD_HOME"
+          avdmanager="$(dirname "$tools")/avdmanager"
+          printf 'no\n' > "$RUNNER_TEMP/fitoscan-avd-input.txt"
+          "$avdmanager" create avd --force --name fitoscan_ci --package "$image" --path "$ANDROID_AVD_HOME/fitoscan_ci.avd" < "$RUNNER_TEMP/fitoscan-avd-input.txt" > evidence/avd-create.log 2>&1
+          "$avdmanager" list avd > evidence/avd-list.txt
+          emulator -list-avds | tee evidence/emulator-list.txt
+          test -f "$ANDROID_AVD_HOME/fitoscan_ci.ini"
+          grep -qx fitoscan_ci evidence/emulator-list.txt
           emulator -avd fitoscan_ci -no-window -no-audio -no-boot-anim -no-snapshot -gpu swiftshader_indirect > evidence/emulator.log 2>&1 &
-          trap 'adb emu kill || true' EXIT
-          timeout 240 adb wait-for-device
+          emu_pid=$!
+          trap 'adb emu kill || true; kill "$emu_pid" 2>/dev/null || true' EXIT
+          ready=0
+          for i in $(seq 1 120); do
+            if ! kill -0 "$emu_pid" 2>/dev/null; then
+              echo "::error::Emulator process exited before ADB connected"
+              tail -n 60 evidence/emulator.log
+              exit 1
+            fi
+            if adb get-state 2>/dev/null | grep -qx device; then ready=1; break; fi
+            sleep 3
+          done
+          test "$ready" = 1
           timeout 240 bash -c 'until [[ "$(adb shell getprop sys.boot_completed | tr -d "\r")" == 1 ]]; do sleep 3; done'
           adb shell input keyevent 82
           adb shell cmd connectivity airplane-mode enable
