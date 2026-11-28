@@ -1,21 +1,24 @@
 # FitoScan–AI Android
 
-Proiect Android pentru FitoScan–AI V1.3, pregătit pentru build automat în GitHub Actions.
+Stadiul codului sursă: **V1.11.1 – Corectare interfață**, conform [commitului din 8 octombrie 2026](https://github.com/gabirasoi66/FitoScan-AI-Android/commit/7dcc0369f93f0d807efb3de027e2ae74908a1f93).
+Versiunea proiectului și versiunea pachetului Android sunt distincte. În `app/build.gradle.kts`, pachetul are `versionName = "1.0"` și `versionCode = 1`.
 
-## Build APK în GitHub
+## Scanarea pe telefon
 
-Workflow: `.github/workflows/android-build.yml`
+În ecranul **Scanare plantă**, puteți adăuga până la patru fotografii în total. În V1.11.1, selectorul din galerie preia câte o fotografie la fiecare deschidere și ignoră un URI deja adăugat. Puteți verifica previzualizările și elimina fotografiile individual sau pe toate odată.
 
-La fiecare push pe `main` sau rulare manuală, GitHub Actions:
-1. descarcă proiectul;
-2. configurează JDK 17 și Gradle;
-3. execută `:app:assembleDebug`;
-4. publică `app-debug.apk` ca artifact cu numele `FitoScan-AI-debug-apk`.
+Codul include un flux de captură prin cameră. Configurarea completă a acestuia necesită declararea providerului asociat autorității de tip `<applicationId>.fileprovider`, absentă din manifestul acestei versiuni.
 
-## Instalare pe telefon
+## Analiza AI
 
-După ce workflow-ul s-a terminat cu succes, descarcă artifactul `FitoScan-AI-debug-apk`, extrage ZIP-ul și instalează `app-debug.apk` pe Android.
+Aplicația pregătește fotografiile pe dispozitiv cu `ImagePreprocessor`, construiește cererea prin `AnalysisContract` și o trimite prin `ApiTransport` către backend-ul FitoScan, configurat în `NetworkConfig`. Selectarea fișierelor locale, previzualizarea și eliminarea lor funcționează independent de serviciul de analiză. Diagnosticul AI necesită o conexiune la internet și un backend HTTPS funcțional. Cheia furnizorului AI și celelalte secrete de serviciu se păstrează exclusiv pe server.
 
-## Important
+## Compilarea și instalarea APK-ului
 
-Aplicația Android împachetează interfața FitoScan–AI. Pentru analiza AI reală, backend-ul FitoScan trebuie să ruleze pe un server HTTPS și cheia OpenAI trebuie păstrată numai pe server, nu în aplicația Android.
+Proiectul configurează `minSdk = 26` și `compileSdk = 35`. Cu o instalare Gradle compatibilă cu pluginul Android al proiectului și Android SDK 35, comanda de compilare din rădăcina proiectului este:
+
+```sh
+gradle :app:assembleDebug
+```
+
+Dacă buildul reușește, găsiți APK-ul de test în `app/build/outputs/apk/debug/app-debug.apk`. Instalați acest fișier pe un telefon sau emulator Android compatibil. În revizia documentată lipsesc Gradle Wrapper (`gradlew`) și workflow-ul `.github/workflows/android-build.yml` menționat anterior.
