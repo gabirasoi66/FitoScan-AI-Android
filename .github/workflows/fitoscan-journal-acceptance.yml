@@ -112,6 +112,8 @@ jobs:
 
           def click(nodes,label):
               candidates=[n for n in nodes if node_match(n,label) and n.get('clickable')=='true']
+              exact=[n for n in candidates if label.casefold().strip() in (n.get('text','').casefold().strip(), n.get('content-desc','').casefold().strip())]
+              if exact: candidates=exact
               assert len(candidates)==1, f'Expected one clickable {label}, found {len(candidates)}'
               tap(candidates[0])
 
